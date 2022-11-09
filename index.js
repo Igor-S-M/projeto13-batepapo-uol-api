@@ -5,12 +5,36 @@ const server = express()
 server.use(express.json())
 server.use(cors())
 
-server.get("/",(req,res)=>{
-    res.send("get deu bom")
+const participants = []
+
+server.get("/participants", (req, res) => {
+    res.send(participants)
 })
 
-server.post("/",(req,res)=>{
-    res.send("post deu bom")    
+server.post("/participants", (req, res) => {
+
+    const { name } = req.body
+
+    if (!name) {
+        res.sendStatus(422)
+        return
+
+    }else if(participants.find(i=>i.name === name)){
+        res.sendStatus(409)
+        return
+
+    }else{
+
+        let participant = {
+            name,
+            lastStatus: "Date.now()"
+        } 
+
+        participants.push(participant)
+        res.sendStatus(201)
+    }
+
+
 })
 
 server.listen(5000)
