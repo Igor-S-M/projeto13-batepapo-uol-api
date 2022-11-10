@@ -1,6 +1,9 @@
 import express from "express"
 import cors from "cors"
 import dayjs from "dayjs"
+import { MongoClient } from "mongodb"
+import dotenv from "dotenv"
+
 
 
 const server = express()
@@ -8,13 +11,30 @@ const server = express()
 //configs
 server.use(express.json())
 server.use(cors())
+dotenv.config()
+const mongoClient = new MongoClient(process.env.MONGO_URI)
+let db;
+
+mongoClient.connect().then(() => {
+    db = mongoClient.db("batePapoUol")
+}).catch(err => console.log(err))
 
 //coleçoes do db - batePapoUol
 const participants = []
 const messages = []
 
 server.get("/participants", (req, res) => {
-    res.send(participants)
+
+    db.collection("participants")
+        .find()
+        .toArray()
+        .then(participants => {
+            res.send(participants)
+        }).catch(err => {
+            console.log(err)
+            res.sendStatus(500)
+        })
+
 })
 
 server.post("/participants", (req, res) => {
@@ -25,19 +45,23 @@ server.post("/participants", (req, res) => {
         res.sendStatus(422)
         return
 
-    } else if (participants.find(i => i.name === name)) {
+    } else if (participants.filter(i => i.name === name).length === 0) {
         res.sendStatus(409)
         return
 
     } else {
 
-        let participant = {
+        db.collection("participants").insert({
             name,
             lastStatus: Date.now()
-        }
+        })
+        .then((response)=>{
+            console.log(response)
+            res.sendStatus(201)
+        }).catch(err=>{
+            console.log(err)
+        })
 
-        participants.push(participant)
-        res.sendStatus(201)
     }
 })
 
@@ -50,10 +74,10 @@ server.post("/messages", (req, res) => {
     if (!to || !text) {
         res.status(422).send("errou no to/text")
         return
-    //BUG estranho
-    // } else if (type !== "message" || type !== "private_message") {
-    //     res.status(422).send("errou no type")
-    //     return
+        //BUG estranho
+        // } else if (type !== "message" || type !== "private_message") {
+        //     res.status(422).send("errou no type")
+        //     return
     } else if (!participants.find(i => i.name === user)) {
         res.status(422).send("errou no participants")
         return
@@ -76,20 +100,20 @@ server.post("/messages", (req, res) => {
     }
 })
 
-server.get("/messages",(req,res)=>{
+server.get("/messages", (req, res) => {
     res.send(messages)
 })
 
 
-server.post("/status",(req,res)=>{
-    const {user} = req.headers
-    const participant = participants.find((i)=>{i.name === user})
+server.post("/status", (req, res) => {
+    const { user } = req.headers
+    const participant = participants.filter((i) => { i.name === user })
 
-    if(!participant){
+    if (!participant) {
         res.status(404).send(participants)
-    }else{
-        participant.lastStatus =  Date.now()
-        res.status(200).send(participants) 
+    } else {
+        participant.lastStatus = Date.now()
+        res.status(200).send(participants)
     }
 })
 
