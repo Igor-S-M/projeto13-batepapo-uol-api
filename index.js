@@ -55,16 +55,29 @@ server.post("/participants", (req, res) => {
             name,
             lastStatus: Date.now()
         })
-        .then((response)=>{
-            console.log(response)
-            res.sendStatus(201)
-        }).catch(err=>{
-            console.log(err)
-        })
+            .then((response) => {
+                console.log(response)
+                res.sendStatus(201)
+            }).catch(err => {
+                console.log(err)
+            })
 
     }
 })
 
+server.get("/messages", (req, res) => {
+
+    db.collection("messages")
+        .find()
+        .toArray()
+        .then(messages => {
+            res.send(messages)
+        }).catch(err => {
+            console.log(err)
+            res.sendStatus(500)
+        })
+
+})
 
 server.post("/messages", (req, res) => {
 
@@ -87,21 +100,21 @@ server.post("/messages", (req, res) => {
         const min = (dayjs().minute())
         const hora = (dayjs().hour())
 
-        let msg = {
+        db.collection("participants").insert({
             from: user,
             to,
             text,
             type,
             time: `${hora}:${min}:${seg}`
-        }
+        })
+            .then((response) => {
+                console.log(response)
+                res.sendStatus(201)
+            }).catch(err => {
+                console.log(err)
+            })
 
-        messages.push(msg)
-        res.sendStatus(201)
     }
-})
-
-server.get("/messages", (req, res) => {
-    res.send(messages)
 })
 
 
