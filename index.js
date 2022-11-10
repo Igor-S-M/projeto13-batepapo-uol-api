@@ -2,10 +2,14 @@ import express from "express"
 import cors from "cors"
 import dayjs from "dayjs"
 
+
 const server = express()
+
+//configs
 server.use(express.json())
 server.use(cors())
 
+//coleçoes do db - batePapoUol
 const participants = []
 const messages = []
 
@@ -21,7 +25,7 @@ server.post("/participants", (req, res) => {
         res.sendStatus(422)
         return
 
-    } else if (!name || participants.find(i => i.name === name)) {
+    } else if (participants.find(i => i.name === name)) {
         res.sendStatus(409)
         return
 
@@ -76,5 +80,17 @@ server.get("/messages",(req,res)=>{
     res.send(messages)
 })
 
+
+server.post("/status",(req,res)=>{
+    const {user} = req.headers
+    const participant = participants.find((i)=>{i.name === user})
+
+    if(!participant){
+        res.status(404).send(participants)
+    }else{
+        participant.lastStatus =  Date.now()
+        res.status(200).send(participants) 
+    }
+})
 
 server.listen(5000)
