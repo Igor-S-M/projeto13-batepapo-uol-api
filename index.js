@@ -15,13 +15,13 @@ dotenv.config()
 const mongoClient = new MongoClient(process.env.MONGO_URI)
 let db;
 
-mongoClient.connect().then(() => {
-    db = mongoClient.db("batePapoUol")
-}).catch(err => console.log(err))
+mongoClient.connect()
+    .then(() => {
+        db = mongoClient.db("batePapoUol")
+    }).catch(err => console.log(err))
 
 //coleçoes do db - batePapoUol
 const participants = []
-const messages = []
 
 server.get("/participants", (req, res) => {
 
@@ -91,16 +91,16 @@ server.post("/messages", (req, res) => {
         // } else if (type !== "message" || type !== "private_message") {
         //     res.status(422).send("errou no type")
         //     return
-    } else if (!participants.find(i => i.name === user)) {
-        res.status(422).send("errou no participants")
-        return
+    // } else if (!participants.find(i => i.name === user)) {
+    //     res.status(422).send("errou no participants")
+    //     return
     } else {
 
         const seg = (dayjs().second())
         const min = (dayjs().minute())
         const hora = (dayjs().hour())
 
-        db.collection("participants").insert({
+        db.collection("messages").insert({
             from: user,
             to,
             text,
