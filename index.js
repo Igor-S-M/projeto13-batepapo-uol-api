@@ -9,7 +9,7 @@ import joi from "joi"
 const bodySchema = joi.object({
     to: joi.string().required().min(1),
     text: joi.string().required().min(1),
-    type: joi.required()
+    type: joi.any().required().valid("message","private_message")
 })
 
 
@@ -77,10 +77,22 @@ server.post("/participants", async (req, res) => {
 server.get("/messages", async (req, res) => {
 
     const {limit} = req.query
+    const {user} = req.headers
+
+    function filtragem(msg){
+        if(msg.type === "message"){
+            return true
+        }else if(msg.to === user || msg.from === user){
+            return true
+        }else{
+            return false
+        }     
+    }
 
     try {
         const promise = await db.collection("messages").find().toArray()
-        res.send(promise.slice(-limit).reverse())
+        const valid =  promise.filter(message => filtragem(message))
+        res.send(valid.slice(-limit).reverse())
 
     } catch (err) {
         console.log(err)
