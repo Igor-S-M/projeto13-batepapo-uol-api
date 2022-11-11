@@ -67,17 +67,17 @@ server.post("/participants", async (req, res) => {
             return
         }
 
-        await db.collection("participants").insert({
+        await db.collection("participants").insertOne({
             name,
             lastStatus: Date.now()
         })
 
-        await db.collection("messages").insert({
+        await db.collection("messages").insertOne({
             from: name,
             to: "Todos",
             text: "entra na sala...",
             type: "status",
-            time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`    
+            time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
         })
 
         res.sendStatus(201)
@@ -110,7 +110,7 @@ server.get("/messages", async (req, res) => {
             .collection("messages")
             .find()
             .toArray()
-            
+
         const filteredPromisse = promise.filter(message => filtragem(message))
 
         res.send(filteredPromisse.slice(-limit).reverse())
@@ -145,7 +145,7 @@ server.post("/messages", async (req, res) => {
             return
         }
 
-        await db.collection("messages").insert({
+        await db.collection("messages").insertOne({
             ...body, from: user, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
         })
 
@@ -156,6 +156,45 @@ server.post("/messages", async (req, res) => {
         console.log(err)
         res.sendStatus(500)
     }
+})
+
+server.delete("messages/:id", async (req, res) => {
+    const { id } = req.params
+    const { user } = req.headers
+
+    const messageFound = await db
+        .collection("messages")
+        .findOne({ _id: new ObjectId(id) })
+
+    if (!messageFound) {
+        res.status(404)
+        return
+    }
+
+    const userFound = await db
+        .collection("participants")
+        .findOne({ name:user })
+
+    if (!userFound) {
+        res.status(422)
+        return
+    }
+
+    if (user !== messageFound.from) {
+        res.status(401)
+        return
+    }
+
+    try{
+        await db.collection("messages").deleteOne({_id: new ObjectId(id)})
+        res.status(200)
+    }catch(err){
+
+        console.log(err)
+        res.status(500)
+    }
+
+
 })
 
 server.put("/messages/:id", async (req, res) => {
@@ -181,16 +220,16 @@ server.put("/messages/:id", async (req, res) => {
             return
         }
 
-        const foundID = await db
+        const messageFound = await db
             .collection("messages")
             .findOne({ _id: new ObjectId(id) })
 
-        if (!foundID) {
+        if (!messageFound) {
             res.status(404)
             return
         }
 
-        if(user !== foundID.from){
+        if (user !== messageFound.from) {
             res.status(401)
             return
         }
