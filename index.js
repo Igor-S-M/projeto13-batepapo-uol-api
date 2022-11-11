@@ -57,7 +57,7 @@ server.post("/participants", async (req, res) => {
 
     const userFound = await db
         .collection("participants")
-        .findOne({name: name})
+        .findOne({ name: name })
 
     if (!userFound) {
         res.status(400)
@@ -106,7 +106,7 @@ server.post("/messages", async (req, res) => {
 
     const userFound = await db
         .collection("participants")
-        .findOne({name: user})
+        .findOne({ name: user })
 
     if (!userFound) {
         res.status(400)
@@ -178,16 +178,29 @@ server.put("/messages/:id", async (req, res) => {
     }
 })
 
-server.post("/status", (req, res) => {
+server.post("/status", async (req, res) => {
     const { user } = req.headers
-    const participant = participants.filter((i) => { i.name === user })
 
-    if (!participant) {
+    const userFound = await db
+        .collection("participants")
+        .findOne({ name: user })
+
+    if (!userFound) {
         res.status(404).send(participants)
-    } else {
-        participant.lastStatus = Date.now()
-        res.status(200).send(participants)
+        return
     }
+
+    try {
+        await db.collection("participants").updateOne({ name: user }, {
+            $set: { name: user, lastStatus : Date.now() }
+        })
+        res.status(200)
+
+    }catch(err){
+        console.log(err)
+        res.sendStatus(500)
+    }
+
 })
 
 server.listen(5000)
