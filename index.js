@@ -53,24 +53,28 @@ server.post("/participants", async (req, res) => {
         res.sendStatus(422)
         return
 
-        // } else if (participants.filter(i => i.name === name).length === 0) {
-        //     res.sendStatus(409)
-        //     return
-
-    } else {
-
-        try {
-            await db.collection("participants").insert({
-                name,
-                lastStatus: Date.now()
-            })
-            res.sendStatus(201)
-
-        } catch (err) {
-            res.sendStatus(500)
-        }
-
     }
+
+    const userFound = await db
+        .collection("participants")
+        .findOne({name: name})
+
+    if (!userFound) {
+        res.status(400)
+        return
+    }
+
+    try {
+        await db.collection("participants").insert({
+            name,
+            lastStatus: Date.now()
+        })
+        res.sendStatus(201)
+
+    } catch (err) {
+        res.sendStatus(500)
+    }
+
 })
 
 server.get("/messages", async (req, res) => {
