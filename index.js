@@ -104,7 +104,14 @@ server.post("/messages", async (req, res) => {
         return
     }
 
+    const userFound = await db
+        .collection("participants")
+        .findOne({name: user})
 
+    if (!userFound) {
+        res.status(400)
+        return
+    }
 
     const seg = (dayjs().second())
     const min = (dayjs().minute())
