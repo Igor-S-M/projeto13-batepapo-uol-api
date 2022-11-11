@@ -6,7 +6,7 @@ import dotenv from "dotenv"
 import joi from "joi"
 
 
-const messageSchema = joi.object({
+const bodySchema = joi.object({
     to: joi.string().required().min(1),
     text: joi.string().required().min(1),
     type: joi.required()
@@ -92,7 +92,7 @@ server.post("/messages", async (req, res) => {
     const { to, text, type } = req.body
     const { user } = req.headers
 
-    const validation = messageSchema.validate({ to, text, type }, { abortEarly: false })
+    const validation = bodySchema.validate({ to, text, type }, { abortEarly: false })
 
     if (validation.error) {
         const errors = validation.error.details.map(detail => detail.message)
@@ -130,6 +130,15 @@ server.put("/messages/:id", async (req, res) => {
     const seg = (dayjs().second())
     const min = (dayjs().minute())
     const hora = (dayjs().hour())
+
+    const validation = bodySchema.validate({ to, text, type }, { abortEarly: false })
+
+    if (validation.error) {
+        const errors = validation.error.details.map(detail => detail.message)
+        res.status(422).send(errors)
+        return
+    }
+
 
     try {
         const userFound = await db
