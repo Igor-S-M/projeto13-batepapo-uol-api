@@ -30,9 +30,6 @@ try {
     console.log(err)
 }
 
-//coleçoes do db - batePapoUol
-const participants = []
-
 
 server.get("/participants", async (req, res) => {
 
@@ -79,9 +76,11 @@ server.post("/participants", async (req, res) => {
 
 server.get("/messages", async (req, res) => {
 
+    const {limit} = req.query
+
     try {
         const promise = await db.collection("messages").find().toArray()
-        res.send(promise.reverse())
+        res.send(promise.slice(-limit).reverse())
 
     } catch (err) {
         console.log(err)
@@ -186,7 +185,7 @@ server.post("/status", async (req, res) => {
         .findOne({ name: user })
 
     if (!userFound) {
-        res.status(404).send(participants)
+        res.status(404)
         return
     }
 
