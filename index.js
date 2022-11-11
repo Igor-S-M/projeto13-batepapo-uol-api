@@ -1,7 +1,7 @@
 import express from "express"
 import cors from "cors"
 import dayjs from "dayjs"
-import { MongoClient } from "mongodb"
+import { MongoClient, ObjectId } from "mongodb"
 import dotenv from "dotenv"
 import joi from "joi"
 
@@ -92,15 +92,15 @@ server.post("/messages", async (req, res) => {
     const { to, text, type } = req.body
     const { user } = req.headers
 
-    const validation = messageSchema.validate({to,text,type},{abortEarly:false})
+    const validation = messageSchema.validate({ to, text, type }, { abortEarly: false })
 
-    if(validation.error){
-        const errors = validation.error.details.map(detail=> detail.message)
+    if (validation.error) {
+        const errors = validation.error.details.map(detail => detail.message)
         res.status(422).send(errors)
         return
     }
 
-    
+
 
     const seg = (dayjs().second())
     const min = (dayjs().minute())
@@ -120,7 +120,42 @@ server.post("/messages", async (req, res) => {
         res.sendStatus(500)
     }
 
+})
 
+server.put("/messages/:id", async (req, res) => {
+    const { id } = req.params
+    const { to, text, type } = req.body
+    const { user } = req.headers
+
+    const seg = (dayjs().second())
+    const min = (dayjs().minute())
+    const hora = (dayjs().hour())
+
+    try {
+        const userFound = await db
+            .collection("messages")
+            .findOne({ _id: new ObjectId(id) })
+
+        if (!userFound) {
+            res.status(400)
+            return
+        }
+
+        await db.collection("messages").updateOne({ _id: new ObjectId(id) }, {
+            $set: {
+                from: user,
+                to,
+                text,
+                type,
+                time: `${hora}:${min}:${seg}`
+            }
+        })
+
+        res.send("atualizei a msg")
+    } catch (err) {
+        console.log(err)
+        res.sendStatus(500)
+    }
 })
 
 server.post("/status", (req, res) => {
