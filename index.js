@@ -6,10 +6,12 @@ import dotenv from "dotenv"
 import joi from "joi"
 
 
+const stringSchema = joi.string().required().min(1)
+
 const bodySchema = joi.object({
     to: joi.string().required().min(1),
     text: joi.string().required().min(1),
-    type: joi.any().required().valid("message","private_message")
+    type: joi.any().required().valid("message", "private_message")
 })
 
 
@@ -35,8 +37,11 @@ server.get("/participants", async (req, res) => {
 
     try {
         const promise = await db.collection("participants").find().toArray()
-        res.send(promise.reverse())
+
+        res.send(promise)
+
     } catch (err) {
+
         console.log(err)
         res.sendStatus(500)
     }
@@ -45,30 +50,41 @@ server.get("/participants", async (req, res) => {
 server.post("/participants", async (req, res) => {
 
     const { name } = req.body
+    const validationName = stringSchema.validate(name)
 
-    if (!name) {
-        res.sendStatus(422)
-        return
-
-    }
-
-    const userFound = await db
-        .collection("participants")
-        .findOne({ name: name })
-
-    if (userFound) {
-        res.status(400)
+    if (validationName.error) {
+        res.status(422).send(validationName.error.message)
         return
     }
 
     try {
+        const userFound = await db
+            .collection("participants")
+            .findOne({ name: name })
+
+        if (userFound) {
+            res.status(409).send("nome de usuário já cadastrado")
+            return
+        }
+
         await db.collection("participants").insert({
             name,
             lastStatus: Date.now()
         })
+
+        await db.collection("messages").insert({
+            from: name,
+            to: "Todos",
+            text: "entra na sala...",
+            type: "status",
+            time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`    
+        })
+
         res.sendStatus(201)
 
     } catch (err) {
+
+        console.log(err)
         res.sendStatus(500)
     }
 
@@ -76,23 +92,28 @@ server.post("/participants", async (req, res) => {
 
 server.get("/messages", async (req, res) => {
 
-    const {limit} = req.query
-    const {user} = req.headers
+    const { limit } = req.query
+    const { user } = req.headers
 
-    function filtragem(msg){
-        if(msg.type === "message"){
+    function filtragem(msg) {
+        if (msg.type === "message" || msg.type === "status") {
             return true
-        }else if(msg.to === user || msg.from === user){
+        } else if (msg.to === user || msg.from === user) {
             return true
-        }else{
+        } else {
             return false
-        }     
+        }
     }
 
     try {
-        const promise = await db.collection("messages").find().toArray()
-        const valid =  promise.filter(message => filtragem(message))
-        res.send(valid.slice(-limit).reverse())
+        const promise = await db
+            .collection("messages")
+            .find()
+            .toArray()
+            
+        const filteredPromisse = promise.filter(message => filtragem(message))
+
+        res.send(filteredPromisse.slice(-limit).reverse())
 
     } catch (err) {
         console.log(err)
@@ -104,10 +125,9 @@ server.get("/messages", async (req, res) => {
 
 server.post("/messages", async (req, res) => {
 
-    const { to, text, type } = req.body
+    const body = req.body
     const { user } = req.headers
-
-    const validation = bodySchema.validate({ to, text, type }, { abortEarly: false })
+    const validation = bodySchema.validate(body, { abortEarly: false })
 
     if (validation.error) {
         const errors = validation.error.details.map(detail => detail.message)
@@ -115,52 +135,41 @@ server.post("/messages", async (req, res) => {
         return
     }
 
-    const userFound = await db
-        .collection("participants")
-        .findOne({ name: user })
-
-    if (!userFound) {
-        res.status(422)
-        return
-    }
-
-    const seg = (dayjs().second())
-    const min = (dayjs().minute())
-    const hora = (dayjs().hour())
-
     try {
+        const userFound = await db
+            .collection("participants")
+            .findOne({ name: user })
+
+        if (!userFound) {
+            res.status(422)
+            return
+        }
+
         await db.collection("messages").insert({
-            from: user,
-            to,
-            text,
-            type,
-            time: `${hora}:${min}:${seg}`
+            ...body, from: user, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
         })
+
         res.sendStatus(201)
 
     } catch (err) {
+
+        console.log(err)
         res.sendStatus(500)
     }
-
 })
 
 server.put("/messages/:id", async (req, res) => {
     const { id } = req.params
-    const { to, text, type } = req.body
+    const body = req.body
     const { user } = req.headers
 
-    const seg = (dayjs().second())
-    const min = (dayjs().minute())
-    const hora = (dayjs().hour())
-
-    const validation = bodySchema.validate({ to, text, type }, { abortEarly: false })
+    const validation = bodySchema.validate(body, { abortEarly: false })
 
     if (validation.error) {
         const errors = validation.error.details.map(detail => detail.message)
         res.status(422).send(errors)
         return
     }
-
 
     try {
         const userFound = await db
@@ -172,17 +181,27 @@ server.put("/messages/:id", async (req, res) => {
             return
         }
 
+        const foundID = await db
+            .collection("messages")
+            .findOne({ _id: new ObjectId(id) })
+
+        if (!foundID) {
+            res.status(404)
+            return
+        }
+
+        if(user !== foundID.from){
+            res.status(401)
+            return
+        }
+
         await db.collection("messages").updateOne({ _id: new ObjectId(id) }, {
             $set: {
-                from: user,
-                to,
-                text,
-                type,
-                time: `${hora}:${min}:${seg}`
+                ...body, from: user, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
             }
         })
+        res.send(200)
 
-        res.send("atualizei a msg")
     } catch (err) {
         console.log(err)
         res.sendStatus(404)
@@ -203,11 +222,11 @@ server.post("/status", async (req, res) => {
 
     try {
         await db.collection("participants").updateOne({ name: user }, {
-            $set: { name: user, lastStatus : Date.now() }
+            $set: { name: user, lastStatus: Date.now() }
         })
         res.status(200)
 
-    }catch(err){
+    } catch (err) {
         console.log(err)
         res.sendStatus(500)
     }
