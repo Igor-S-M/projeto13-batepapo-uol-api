@@ -59,7 +59,7 @@ server.post("/participants", async (req, res) => {
         .collection("participants")
         .findOne({ name: name })
 
-    if (!userFound) {
+    if (userFound) {
         res.status(400)
         return
     }
@@ -109,7 +109,7 @@ server.post("/messages", async (req, res) => {
         .findOne({ name: user })
 
     if (!userFound) {
-        res.status(400)
+        res.status(422)
         return
     }
 
@@ -157,7 +157,7 @@ server.put("/messages/:id", async (req, res) => {
             .findOne({ _id: new ObjectId(id) })
 
         if (!userFound) {
-            res.status(400)
+            res.status(422)
             return
         }
 
@@ -174,7 +174,7 @@ server.put("/messages/:id", async (req, res) => {
         res.send("atualizei a msg")
     } catch (err) {
         console.log(err)
-        res.sendStatus(500)
+        res.sendStatus(404)
     }
 })
 
