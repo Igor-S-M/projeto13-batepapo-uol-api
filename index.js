@@ -3,17 +3,8 @@ import cors from "cors"
 import dayjs from "dayjs"
 import { MongoClient, ObjectId } from "mongodb"
 import dotenv from "dotenv"
-import joi from "joi"
-
-
-const stringSchema = joi.string().required().min(1)
-
-const bodySchema = joi.object({
-    to: joi.string().required().min(1),
-    text: joi.string().required().min(1),
-    type: joi.any().required().valid("message", "private_message")
-})
-
+import { bodySchema } from "./MiddleWares/messageMiddleware.js"
+import { nameSchema } from "./MiddleWares/nameMiddleware.js"
 
 const server = express()
 
@@ -25,6 +16,7 @@ dotenv.config()
 const mongoClient = new MongoClient(process.env.MONGO_URI)
 let db;
 
+
 try {
     await mongoClient.connect()
     db = mongoClient.db("batePapoUol")
@@ -32,47 +24,84 @@ try {
     console.log(err)
 }
 
+const participantsCollection = db.collection("participants")
+const messagesCollection = db.collection("messages")
 
-server.get("/participants", async (req, res) => {
+async function findUserList() {
+    const userList = await participantsCollection.find().toArray()
+    return userList
+}
 
-    try {
-        const promise = await db.collection("participants").find().toArray()
+async function findMessageList() {
+    const messageList = await messagesCollection.find().toArray()
+    return messageList
+}
 
-        res.send(promise)
+async function findUser(name) {
 
-    } catch (err) {
+    const foundUser = await participantsCollection.findOne({ name: name })
+    return foundUser
+}
 
-        console.log(err)
-        res.sendStatus(500)
-    }
-})
+async function findMessage(id) {
+
+    const foundMessage = await messagesCollection.findOne({ _id: new ObjectId(id) })
+    return foundMessage
+}
+
+async function addMessage(obj) {
+    await messagesCollection.insertOne({ ...obj })
+}
+
+async function addParticipant(obj) {
+    await participantsCollection.insertOne({ ...obj })
+}
+
+async function removeMessage(id) {
+    await messagesCollection.deleteOne({ _id: ObjectId(id) })
+}
+
+async function removeParticipant(name) {
+    await participantsCollection.deleteOne({ name: name })
+}
+
+async function changeMessage(beforeID, after) {
+    await messagesCollection.updateOne({ _id: new ObjectId(beforeID) }, {
+        $set: after
+    })
+}
+
+async function updateParticipantStatus(name) {
+    await participantsCollection.updateOne({ name }, {
+        $set: { name, lastStatus: Date.now() }
+    })
+}
+
 
 server.post("/participants", async (req, res) => {
 
     const { name } = req.body
-    const validationName = stringSchema.validate(name)
 
-    if (validationName.error) {
-        res.status(422).send(validationName.error.message)
-        return
+    const nameValidation = nameSchema.validate(name)
+
+    if (nameValidation.error) {
+        return res.status(422).send(nameValidation.error.message)
     }
 
     try {
-        const userFound = await db
-            .collection("participants")
-            .findOne({ name: name })
+
+        const userFound = await findUser(name)
 
         if (userFound) {
-            res.status(409).send("nome de usuário já cadastrado")
-            return
+            return res.status(409).send("nome de usuário já cadastrado")
         }
 
-        await db.collection("participants").insertOne({
+        await addParticipant({
             name,
             lastStatus: Date.now()
         })
 
-        await db.collection("messages").insertOne({
+        await addMessage({
             from: name,
             to: "Todos",
             text: "entra na sala...",
@@ -80,14 +109,57 @@ server.post("/participants", async (req, res) => {
             time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
         })
 
-        res.sendStatus(201)
+        return res.sendStatus(201)
+
+    } catch (err) {
+        console.log(err)
+        return res.sendStatus(500)
+    }
+
+})
+
+server.get("/participants", async (req, res) => {
+
+    try {
+        const userList = await findUserList()
+        return res.status(200).send(userList)
+    } catch (err) {
+        console.log(err)
+        return res.sendStatus(500)
+    }
+})
+
+server.post("/messages", async (req, res) => {
+
+    const body = req.body
+    const { user } = req.headers
+
+    try {
+        const userFound = await findUser(user)
+
+        if (!userFound) {
+            return res.sendStatus(422)
+        }
+
+        const validation = bodySchema.validate(body, { abortEarly: false })
+
+        if (validation.error) {
+
+            const errors = validation.error.details.map(detail => detail.message)
+            return res.status(422).send(errors)
+        }
+
+        addMessage({
+            ...body, from: user, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
+        })
+
+        return res.sendStatus(201)
 
     } catch (err) {
 
         console.log(err)
-        res.sendStatus(500)
+        return res.sendStatus(500)
     }
-
 })
 
 server.get("/messages", async (req, res) => {
@@ -95,7 +167,7 @@ server.get("/messages", async (req, res) => {
     const { limit } = req.query
     const { user } = req.headers
 
-    function filtragem(msg) {
+    function seekPermission(msg) {
         if (msg.type === "message" || msg.type === "status") {
             return true
         } else if (msg.to === user || msg.from === user) {
@@ -106,95 +178,49 @@ server.get("/messages", async (req, res) => {
     }
 
     try {
-        const promise = await db
-            .collection("messages")
-            .find()
-            .toArray()
+        const messagesList = await findMessageList()
+        const allowedMessages = messagesList
+            .filter(message => seekPermission(message))
 
-        const filteredPromisse = promise.filter(message => filtragem(message))
 
-        res.send(filteredPromisse.slice(-limit).reverse())
+        return res.status(200).send(allowedMessages.slice(-limit))
 
     } catch (err) {
         console.log(err)
-        res.sendStatus(500)
+        return res.sendStatus(500)
 
     }
 
 })
 
-server.post("/messages", async (req, res) => {
 
-    const body = req.body
-    const { user } = req.headers
-    const validation = bodySchema.validate(body, { abortEarly: false })
-
-    if (validation.error) {
-        const errors = validation.error.details.map(detail => detail.message)
-        res.status(422).send(errors)
-        return
-    }
-
-    try {
-        const userFound = await db
-            .collection("participants")
-            .findOne({ name: user })
-
-        if (!userFound) {
-            res.status(422)
-            return
-        }
-
-        await db.collection("messages").insertOne({
-            ...body, from: user, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
-        })
-
-        res.sendStatus(201)
-
-    } catch (err) {
-
-        console.log(err)
-        res.sendStatus(500)
-    }
-})
-
-server.delete("messages/:id", async (req, res) => {
+server.delete("/messages/:id", async (req, res) => {
     const { id } = req.params
     const { user } = req.headers
 
-    const messageFound = await db
-        .collection("messages")
-        .findOne({ _id: new ObjectId(id) })
+    try {
+        const messageFound = await findMessage(id)
+        const userFound = await findUser(user)
 
-    if (!messageFound) {
-        res.status(404)
-        return
-    }
+        if (!messageFound) {
+            return res.sendStatus(404)
+        }
 
-    const userFound = await db
-        .collection("participants")
-        .findOne({ name:user })
+        if (!userFound) {
+            return res.sendStatus(422)
 
-    if (!userFound) {
-        res.status(422)
-        return
-    }
+        }
+        if (userFound.name !== messageFound.from) {
+            return res.sendStatus(401)
+        }
 
-    if (user !== messageFound.from) {
-        res.status(401)
-        return
-    }
+        await removeMessage(id)
+        return res.sendStatus(200)
 
-    try{
-        await db.collection("messages").deleteOne({_id: new ObjectId(id)})
-        res.status(200)
-    }catch(err){
-
+    } catch (err) {
         console.log(err)
-        res.status(500)
+        return res.sendStatus(500)
     }
-
-
 })
 
 server.put("/messages/:id", async (req, res) => {
@@ -206,70 +232,76 @@ server.put("/messages/:id", async (req, res) => {
 
     if (validation.error) {
         const errors = validation.error.details.map(detail => detail.message)
-        res.status(422).send(errors)
-        return
+        return res.status(422).send(errors)
     }
 
     try {
-        const userFound = await db
-            .collection("messages")
-            .findOne({ _id: new ObjectId(id) })
-
-        if (!userFound) {
-            res.status(422)
-            return
-        }
-
-        const messageFound = await db
-            .collection("messages")
-            .findOne({ _id: new ObjectId(id) })
+        const messageFound = await findMessage(id)
+        const userFound = await findUser(user)
 
         if (!messageFound) {
-            res.status(404)
-            return
+            return res.status(404).send("num achei")
         }
 
-        if (user !== messageFound.from) {
-            res.status(401)
-            return
+        if (!userFound) {
+            return res.sendStatus(422)
         }
 
-        await db.collection("messages").updateOne({ _id: new ObjectId(id) }, {
-            $set: {
-                ...body, from: user, time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
-            }
+        //trava aqui
+        if (userFound.name !== messageFound.from) {
+            return res.sendStatus(401)
+        }
+
+        await changeMessage(id, {
+            ...body,
+            from: user,
+            time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
         })
-        res.send(200)
+        return res.sendStatus(200)
 
     } catch (err) {
         console.log(err)
-        res.sendStatus(404)
+        return res.sendStatus(404)
     }
 })
 
 server.post("/status", async (req, res) => {
     const { user } = req.headers
 
-    const userFound = await db
-        .collection("participants")
-        .findOne({ name: user })
+    const userFound = await findUser(user)
 
     if (!userFound) {
-        res.status(404)
-        return
+        return res.sendStatus(404)
     }
 
     try {
-        await db.collection("participants").updateOne({ name: user }, {
-            $set: { name: user, lastStatus: Date.now() }
-        })
-        res.status(200)
+        await updateParticipantStatus(user)
+        return res.sendStatus(200)
 
     } catch (err) {
         console.log(err)
-        res.sendStatus(500)
+        return res.sendStatus(500)
     }
 
 })
+
+
+setInterval(async () => {
+    const userList = await findUserList()
+    userList.forEach(participant => {
+        if (Date.now() - participant.lastStatus > 10000) {
+            addMessage({
+                from: participant.name,
+                to: "Todos",
+                text: "sai da sala...",
+                type: "status",
+                time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
+            })
+            removeParticipant(participant.name)
+        }
+    })
+
+
+}, 5000)
 
 server.listen(5000)
